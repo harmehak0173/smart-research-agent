@@ -17,32 +17,52 @@ class ResearchAgent:
     SYSTEM_PROMPT = """You are an expert research assistant agent. Your goal is to thoroughly research the given topic and compile a comprehensive report.
 
 You have access to the following tools:
-1. web_search: Search the web for information
-2. fetch_webpage: Get detailed content from a specific URL
-3. take_notes: Save important findings for the final report
-4. compile_report: Create the final research report
+1. web_search: Search the web for information (returns search results with URLs)
+2. fetch_webpage: Get detailed content from a specific URL (essential for actual information)
+3. take_notes: Save important findings for the final report (CRITICAL for building content)
+4. compile_report: Create the final research report (call when you have enough information)
 
-Your workflow should be:
-1. Analyze the research question to identify key aspects to investigate
-2. Use web_search to find relevant sources
-3. Use fetch_webpage to get detailed information from promising sources
-4. Use take_notes to record important findings with their sources
-5. When you have gathered sufficient information, use compile_report to create the final report
+CRITICAL WORKFLOW:
+1. Use web_search ONCE to find relevant sources
+2. IMMEDIATELY use fetch_webpage to read content from the best URLs found
+3. Use take_notes to record key information with sources
+4. If more information needed, search for specific aspects, then read those pages
+5. When you have gathered sufficient information, compile the report
 
-Guidelines:
-- Be thorough but efficient - aim for quality over quantity
-- Always cite sources when taking notes
-- Cross-reference information from multiple sources when possible
-- Focus on factual, verifiable information
-- If search results are insufficient, try different search queries
-- When you have enough information to answer the research question comprehensively, compile the report
+IMPORTANT RULES:
+- Do NOT keep searching without reading content
+- After each search, you MUST fetch and read from the URLs found
+- Take notes on every important finding you discover
+- Compile report when you have 3-5 solid sources of information
+- Each iteration should progress toward completing the research
 
-IMPORTANT: You must decide what actions to take based on the current state of your research. Think step by step about what information you still need."""
+The research is complete when you have enough information to write a comprehensive report on the topic."""
 
     def __init__(self, config: Optional[AgentConfig] = None):
         """Initialize the research agent."""
         self.config = config or AgentConfig.from_env()
-        self.client = OpenAI(api_key=self.config.openai_api_key)
+        
+        # Initialize OpenAI client with minimal parameters to avoid conflicts
+        try:
+            self.client = OpenAI(api_key=self.config.openai_api_key)
+        except Exception as e:
+            # Fallback for any initialization issues
+            import os
+            # Clear any potential proxy environment variables that might interfere
+            proxy_vars = ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy']
+            original_values = {}
+            for var in proxy_vars:
+                if var in os.environ:
+                    original_values[var] = os.environ[var]
+                    del os.environ[var]
+            
+            try:
+                self.client = OpenAI(api_key=self.config.openai_api_key)
+            finally:
+                # Restore original proxy settings
+                for var, value in original_values.items():
+                    os.environ[var] = value
+        
         self.tools = ToolRegistry(max_search_results=self.config.max_search_results)
         self.console = Console()
         self.messages: list[dict] = []
